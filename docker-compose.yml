@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  react-app:
+    build:
+      context: /opt/telegamez/telly/openai-realtime-console/
+      dockerfile: ./Dockerfile  # Use the Dockerfile for the React app
+    container_name: realtime-console-app
+    restart: unless-stopped
+    environment:
+      - REACT_APP_LOCAL_RELAY_SERVER_URL=http://localhost:7301
+    network_mode: host
+
+  relay-server:
+    build:
+      context: /opt/telegamez/telly/openai-realtime-console/
+      dockerfile: ./relay-server/Dockerfile  # Use the new Dockerfile for the relay server
+    container_name: realtime-relay-server
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    network_mode: host
