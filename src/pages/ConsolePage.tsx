@@ -54,19 +54,36 @@ interface RealtimeEvent {
   event: { [key: string]: any };
 }
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer?: string; // Optional if not always included
+}
+
+type QuizQuestionResponse = QuizQuestion | { error: string };
+
+
 export function ConsolePage() {
+
+  const [currentQuizQuestion, setCurrentQuizQuestion] = useState<QuizQuestion | null>(null);
+  const [quizScore, setQuizScore] = useState<number>(0);
+  const [quizQuestion, setQuizQuestion] = useState<QuizQuestion | null>(null);
+
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [pinCode, setPinCode] = useState('');
+
   /**
    * Ask user for API Key
    * If we're using the local relay server, we don't need this
    */
-  const apiKey = LOCAL_RELAY_SERVER_URL
-    ? ''
-    : localStorage.getItem('tmp::voice_api_key') ||
-      prompt('OpenAI API Key') ||
-      '';
-  if (apiKey !== '') {
-    localStorage.setItem('tmp::voice_api_key', apiKey);
-  }
+  const apiKey = process.env.REACT_APP_OPENAI_API_KEY || '';
+  //   ? ''
+  //   : localStorage.getItem('tmp::voice_api_key') ||
+  //     prompt('OpenAI API Key') ||
+  //     '';
+  // if (apiKey !== '') {
+  //   localStorage.setItem('tmp::voice_api_key', apiKey);
+  // }
 
   /**
    * Instantiate:
@@ -149,14 +166,14 @@ export function ConsolePage() {
   /**
    * When you click the API key
    */
-  const resetAPIKey = useCallback(() => {
-    const apiKey = prompt('OpenAI API Key');
-    if (apiKey !== null) {
-      localStorage.clear();
-      localStorage.setItem('tmp::voice_api_key', apiKey);
-      window.location.reload();
-    }
-  }, []);
+  // const resetAPIKey = useCallback(() => {
+  //   const apiKey = prompt('OpenAI API Key');
+  //   if (apiKey !== null) {
+  //     localStorage.clear();
+  //     localStorage.setItem('tmp::voice_api_key', apiKey);
+  //     window.location.reload();
+  //   }
+  // }, []);
 
   /**
    * Connect to conversation:
@@ -273,15 +290,16 @@ export function ConsolePage() {
    * Auto-scroll the event logs
    */
   useEffect(() => {
-    if (eventsScrollRef.current) {
-      const eventsEl = eventsScrollRef.current;
-      const scrollHeight = eventsEl.scrollHeight;
-      // Only scroll if height has just changed
-      if (scrollHeight !== eventsScrollHeightRef.current) {
-        eventsEl.scrollTop = scrollHeight;
-        eventsScrollHeightRef.current = scrollHeight;
+    if (!isAuthorized) return;
+      if (eventsScrollRef.current) {
+        const eventsEl = eventsScrollRef.current;
+        const scrollHeight = eventsEl.scrollHeight;
+        // Only scroll if height has just changed
+        if (scrollHeight !== eventsScrollHeightRef.current) {
+          eventsEl.scrollTop = scrollHeight;
+          eventsScrollHeightRef.current = scrollHeight;
+        }
       }
-    }
   }, [realtimeEvents]);
 
   /**
@@ -367,6 +385,7 @@ export function ConsolePage() {
     };
   }, []);
 
+
   /**
    * Core RealtimeClient and audio capture setup
    * Set all of our instructions, tools, events and more
@@ -377,11 +396,105 @@ export function ConsolePage() {
     const client = clientRef.current;
 
     // Set instructions
-    client.updateSession({ instructions: instructions });
+    // client.updateSession({ instructions: instructions });
+    client.updateSession({
+      instructions: `
+        You are an AI assistant designed to facilitate quiz shows. When the user wants to start a quiz or asks for a quiz question, use the 'get_quiz_question' tool with an appropriate topic to fetch a question. Present the question and options to the user without revealing the correct answer. Await the user's response and then confirm whether it's correct.
+      `,
+    });
+    
     // Set transcription, otherwise we don't get user transcriptions back
     client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
 
     // Add tools
+  
+    // Add get_quiz_question tool
+    // Update get_quiz_question tool
+    client.addTool(
+      {
+        name: 'get_quiz_question',
+        description: 'Fetches a quiz question based on a given topic.',
+        parameters: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description: 'The topic for the quiz question.',
+            },
+          },
+          required: ['topic'],
+        },
+      },
+      async ({ topic }: { topic: string }) => {
+        try {
+          const response = await fetch(
+            `https://quizshow.ference.ai/api/getQuiz?topic=${encodeURIComponent(topic)}`
+          );
+          const data = await response.json();
+
+          if ('error' in data) {
+            throw new Error(data.error);
+          }
+
+          setQuizQuestion(data);
+          return data;
+        } catch (error) {
+          console.error('Error fetching quiz question:', error);
+          return { error: 'Failed to fetch quiz question.' };
+        }
+      }
+    );
+
+    // Update check_answer tool
+    client.addTool(
+      {
+        name: 'check_answer',
+        description: 'Checks the user\'s answer against the correct answer.',
+        parameters: {
+          type: 'object',
+          properties: {
+            user_answer: {
+              type: 'string',
+              description: 'The answer provided by the user.',
+            },
+          },
+          required: ['user_answer'],
+        },
+      },
+      async ({ user_answer }: { user_answer: string }) => {
+        if (!quizQuestion) {
+          return { error: 'No current quiz question.' };
+        }
+
+        try {
+          const response = await fetch('https://quizshow.ference.ai/api/checkAnswer', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              user_answer,
+              correct_answer: quizQuestion.answer,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (result.isCorrect) {
+            setQuizScore((prevScore) => prevScore + 1);
+          }
+
+          setQuizQuestion(null);
+
+          return result;
+        } catch (error) {
+          console.error('Error checking answer:', error);
+          return { error: 'Failed to check answer.' };
+        }
+      }
+    );
+    
+
     client.addTool(
       {
         name: 'set_memory',
@@ -505,24 +618,45 @@ export function ConsolePage() {
    */
   return (
     <div data-component="ConsolePage">
+      {/* Content Top Section */}
       <div className="content-top">
         <div className="content-title">
-          <img src="/openai-logomark.svg" />
+          <img src="/openai-logomark.svg" alt="OpenAI Logo" />
           <span>realtime console</span>
         </div>
         <div className="content-api-key">
-          {!LOCAL_RELAY_SERVER_URL && (
-            <Button
-              icon={Edit}
-              iconPosition="end"
-              buttonStyle="flush"
-              label={`api key: ${apiKey.slice(0, 3)}...`}
-              onClick={() => resetAPIKey()}
-            />
+          {!isAuthorized ? (
+            <div className="pin-code-prompt">
+              <input
+                type="password"
+                value={pinCode}
+                onChange={(e) => setPinCode(e.target.value)}
+                placeholder="Enter PIN code"
+              />
+              <Button
+                label="Submit"
+                onClick={() => {
+                  if (pinCode === '7777') {
+                    setIsAuthorized(true);
+                  } else {
+                    alert('Incorrect PIN code');
+                    setPinCode('');
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            // Optionally display some info or leave it empty
+            <div className="api-key-info">
+              {/* You can display a welcome message or the masked API key */}
+              <span>Welcome!</span>
+            </div>
           )}
         </div>
       </div>
-      <div className="content-main">
+      {/* Main Content */}
+      {isAuthorized ? (
+        <div className="content-main">
         <div className="content-logs">
           <div className="content-block events">
             <div className="visualization">
@@ -598,6 +732,21 @@ export function ConsolePage() {
               })}
             </div>
           </div>
+          {quizQuestion && (
+            <div className="content-block quiz">
+              <div className="content-block-title">Quiz Question</div>
+              <div className="content-block-body">
+                <p><strong>{quizQuestion.question}</strong></p>
+                {quizQuestion.options && (
+                  <ol type="A">
+                    {quizQuestion.options.map((option: string, index: number) => (
+                      <li key={index}>{option}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </div>
+          )}
           <div className="content-block conversation">
             <div className="content-block-title">conversation</div>
             <div className="content-block-body" data-conversation-content>
@@ -726,6 +875,11 @@ export function ConsolePage() {
           </div>
         </div>
       </div>
-    </div>
-  );
+        ) : (
+          <div className="content-locked">
+            {/* Optionally, display a message or image */}
+          </div>
+        )}
+      </div>
+    );
 }
