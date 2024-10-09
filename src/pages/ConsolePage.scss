@@ -34,12 +34,8 @@
   font-size: 1.2em;
 }
 
-.content-main {
-  display: flex;
-}
-
 .content-logs {
-  flex: 3;
+  /* flex: 3; */ /* Removed to allow full-width */
   padding: 20px;
 }
 
@@ -50,13 +46,16 @@
 .content-block-title {
   font-size: 1.5em;
   margin-bottom: 10px;
+  cursor: pointer; /* Added cursor pointer for toggle */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .content-block-body {
   background-color: #f5f5f5;
   padding: 10px;
   border-radius: 5px;
-  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -131,15 +130,20 @@
 
 .quiz .options {
   display: flex;
-  justify-content: center;
+  flex-direction: column; /* Changed to column to accommodate all options */
+  align-items: center;
   gap: 10px;
   margin-bottom: 10px;
 }
 
+
 .quiz .options button {
   padding: 10px 20px;
   cursor: pointer;
+  width: 100%; /* Make buttons full width */
+  max-width: 400px; /* Optional max-width */
 }
+
 
 .quiz .feedback {
   font-size: 1.2em;
@@ -194,11 +198,11 @@
 .feedback {
   font-size: 1.2em;
   margin-top: 10px;
-  color: #4caf50; // Green for correct
+  color: #4caf50; /* Green for correct */
+}
 
-  &.incorrect {
-    color: #f44336; // Red for incorrect
-  }
+.feedback.incorrect {
+  color: #f44336; /* Red for incorrect */
 }
 
 .quiz .options button:disabled {

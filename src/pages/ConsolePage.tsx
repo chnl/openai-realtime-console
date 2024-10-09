@@ -18,7 +18,7 @@ import { Quiz } from '../components/quiz/Quiz';
 
 
 import './ConsolePage.scss';
-import { isJsxOpeningLikeElement } from 'typescript';
+
 
 /**
  * Type for all event logs
@@ -104,6 +104,10 @@ export function ConsolePage() {
   const [isRecording, setIsRecording] = useState(false);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
   // Removed coords and marker state variables
+
+  // New state variables for toggling sections
+  const [isEventsExpanded, setIsEventsExpanded] = useState(false);
+  const [isConversationExpanded, setIsConversationExpanded] = useState(false);
 
   /**
    * Utility for formatting the timing of logs
@@ -656,88 +660,24 @@ export function ConsolePage() {
       {isAuthorized ? (
         <div className="content-main">
           <div className="content-logs">
-            <div className="content-block events">
-              <div className="visualization">
-                <div className="visualization-entry client">
-                  <canvas ref={clientCanvasRef} />
-                </div>
-                <div className="visualization-entry server">
-                  <canvas ref={serverCanvasRef} />
-                </div>
+            <div className="visualization">
+              <div className="visualization-entry client">
+                <canvas ref={clientCanvasRef} />
               </div>
-              <div className="content-block-title">events</div>
-              <div className="content-block-body" ref={eventsScrollRef}>
-                {!realtimeEvents.length && `awaiting connection...`}
-                {realtimeEvents.map((realtimeEvent, i) => {
-                  const count = realtimeEvent.count;
-                  const event = { ...realtimeEvent.event };
-                  if (event.type === 'input_audio_buffer.append') {
-                    event.audio = `[trimmed: ${event.audio.length} bytes]`;
-                  } else if (event.type === 'response.audio.delta') {
-                    event.delta = `[trimmed: ${event.delta.length} bytes]`;
-                  }
-                  return (
-                    <div className="event" key={event.event_id}>
-                      <div className="event-timestamp">
-                        {formatTime(realtimeEvent.time)}
-                      </div>
-                      <div className="event-details">
-                        <div
-                          className="event-summary"
-                          onClick={() => {
-                            // Toggle event details
-                            const id = event.event_id;
-                            const expanded = { ...expandedEvents };
-                            if (expanded[id]) {
-                              delete expanded[id];
-                            } else {
-                              expanded[id] = true;
-                            }
-                            setExpandedEvents(expanded);
-                          }}
-                        >
-                          <div
-                            className={`event-source ${
-                              event.type === 'error'
-                                ? 'error'
-                                : realtimeEvent.source
-                            }`}
-                          >
-                            {realtimeEvent.source === 'client' ? (
-                              <ArrowUp />
-                            ) : (
-                              <ArrowDown />
-                            )}
-                            <span>
-                              {event.type === 'error'
-                                ? 'error!'
-                                : realtimeEvent.source}
-                            </span>
-                          </div>
-                          <div className="event-type">
-                            {event.type}
-                            {count && ` (${count})`}
-                          </div>
-                        </div>
-                        {!!expandedEvents[event.event_id] && (
-                          <div className="event-payload">
-                            {JSON.stringify(event, null, 2)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="visualization-entry server">
+                <canvas ref={serverCanvasRef} />
               </div>
             </div>
+
+            {/* Quiz Element Moved Above Events */}
             {currentQuizQuestion && (
               <div className="content-block quiz">
                 <div className="content-block-title">Quiz Show</div>
                 <div className="content-block-body">
                   <Quiz
-                    question={currentQuizQuestion.question}
-                    options={currentQuizQuestion.options}
-                    quizId={currentQuizQuestion.quizId}
+                    question={currentQuizQuestion?.question}
+                    options={currentQuizQuestion?.options || []}
+                    quizId={currentQuizQuestion?.quizId || ''}
                     score={quizScore}
                     onSubmitAnswer={handleAnswer}
                     feedback={quizFeedback}
@@ -745,70 +685,155 @@ export function ConsolePage() {
                 </div>
               </div>
             )}
-            <div className="content-block conversation">
-              <div className="content-block-title">conversation</div>
-              <div className="content-block-body" data-conversation-content>
-                {!items.length && `awaiting connection...`}
-                {items.map((conversationItem, i) => {
-                  return (
-                    <div className="conversation-item" key={conversationItem.id}>
-                      <div className={`speaker ${conversationItem.role || ''}`}>
-                        <div>
-                          {(
-                            conversationItem.role || conversationItem.type
-                          ).replaceAll('_', ' ')}
-                        </div>
-                        <div
-                          className="close"
-                          onClick={() =>
-                            deleteConversationItem(conversationItem.id)
-                          }
-                        >
-                          <X />
-                        </div>
-                      </div>
-                      <div className={`speaker-content`}>
-                        {/* Tool response */}
-                        {conversationItem.type === 'function_call_output' && (
-                          <div>{conversationItem.formatted.output}</div>
-                        )}
-                        {/* Tool call */}
-                        {!!conversationItem.formatted.tool && (
-                          <div>
-                            {conversationItem.formatted.tool.name}(
-                            {conversationItem.formatted.tool.arguments})
-                          </div>
-                        )}
-                        {!conversationItem.formatted.tool &&
-                          conversationItem.role === 'user' && (
-                            <div>
-                              {conversationItem.formatted.transcript ||
-                                (conversationItem.formatted.audio?.length
-                                  ? '(awaiting transcript)'
-                                  : conversationItem.formatted.text ||
-                                    '(item sent)')}
-                            </div>
-                          )}
-                        {!conversationItem.formatted.tool &&
-                          conversationItem.role === 'assistant' && (
-                            <div>
-                              {conversationItem.formatted.transcript ||
-                                conversationItem.formatted.text ||
-                                '(truncated)'}
-                            </div>
-                          )}
-                        {conversationItem.formatted.file && (
-                          <audio
-                            src={conversationItem.formatted.file.url}
-                            controls
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+
+            {/* Events Section with Toggle */}
+            <div className="content-block events">
+              <div
+                className="content-block-title"
+                onClick={() => setIsEventsExpanded(!isEventsExpanded)}
+              >
+                events {isEventsExpanded ? <ArrowUp /> : <ArrowDown />}
               </div>
+              {isEventsExpanded && (
+                <div className="content-block-body" ref={eventsScrollRef}>
+                  {!realtimeEvents.length && `awaiting connection...`}
+                  {realtimeEvents.map((realtimeEvent, i) => {
+                    const count = realtimeEvent.count;
+                    const event = { ...realtimeEvent.event };
+                    if (event.type === 'input_audio_buffer.append') {
+                      event.audio = `[trimmed: ${event.audio.length} bytes]`;
+                    } else if (event.type === 'response.audio.delta') {
+                      event.delta = `[trimmed: ${event.delta.length} bytes]`;
+                    }
+                    return (
+                      <div className="event" key={event.event_id}>
+                        <div className="event-timestamp">
+                          {formatTime(realtimeEvent.time)}
+                        </div>
+                        <div className="event-details">
+                          <div
+                            className="event-summary"
+                            onClick={() => {
+                              // Toggle event details
+                              const id = event.event_id;
+                              const expanded = { ...expandedEvents };
+                              if (expanded[id]) {
+                                delete expanded[id];
+                              } else {
+                                expanded[id] = true;
+                              }
+                              setExpandedEvents(expanded);
+                            }}
+                          >
+                            <div
+                              className={`event-source ${
+                                event.type === 'error'
+                                  ? 'error'
+                                  : realtimeEvent.source
+                              }`}
+                            >
+                              {realtimeEvent.source === 'client' ? (
+                                <ArrowUp />
+                              ) : (
+                                <ArrowDown />
+                              )}
+                              <span>
+                                {event.type === 'error'
+                                  ? 'error!'
+                                  : realtimeEvent.source}
+                              </span>
+                            </div>
+                            <div className="event-type">
+                              {event.type}
+                              {count && ` (${count})`}
+                            </div>
+                          </div>
+                          {!!expandedEvents[event.event_id] && (
+                            <div className="event-payload">
+                              {JSON.stringify(event, null, 2)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            {/* Conversation Section with Toggle */}
+            <div className="content-block conversation">
+              <div
+                className="content-block-title"
+                onClick={() => setIsConversationExpanded(!isConversationExpanded)}
+              >
+                conversation {isConversationExpanded ? <ArrowUp /> : <ArrowDown />}
+              </div>
+              {isConversationExpanded && (
+                <div className="content-block-body" data-conversation-content>
+                  {!items.length && `awaiting connection...`}
+                  {items.map((conversationItem, i) => {
+                    return (
+                      <div className="conversation-item" key={conversationItem.id}>
+                        <div className={`speaker ${conversationItem.role || ''}`}>
+                          <div>
+                            {(
+                              conversationItem.role || conversationItem.type
+                            ).replaceAll('_', ' ')}
+                          </div>
+                          <div
+                            className="close"
+                            onClick={() =>
+                              deleteConversationItem(conversationItem.id)
+                            }
+                          >
+                            <X />
+                          </div>
+                        </div>
+                        <div className={`speaker-content`}>
+                          {/* Tool response */}
+                          {conversationItem.type === 'function_call_output' && (
+                            <div>{conversationItem.formatted.output}</div>
+                          )}
+                          {/* Tool call */}
+                          {!!conversationItem.formatted.tool && (
+                            <div>
+                              {conversationItem.formatted.tool.name}(
+                              {conversationItem.formatted.tool.arguments})
+                            </div>
+                          )}
+                          {!conversationItem.formatted.tool &&
+                            conversationItem.role === 'user' && (
+                              <div>
+                                {conversationItem.formatted.transcript ||
+                                  (conversationItem.formatted.audio?.length
+                                    ? '(awaiting transcript)'
+                                    : conversationItem.formatted.text ||
+                                      '(item sent)')}
+                              </div>
+                            )}
+                          {!conversationItem.formatted.tool &&
+                            conversationItem.role === 'assistant' && (
+                              <div>
+                                {conversationItem.formatted.transcript ||
+                                  conversationItem.formatted.text ||
+                                  '(truncated)'}
+                              </div>
+                            )}
+                          {conversationItem.formatted.file && (
+                            <audio
+                              src={conversationItem.formatted.file.url}
+                              controls
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="content-actions">
               <Toggle
                 defaultValue={false}
@@ -838,15 +863,7 @@ export function ConsolePage() {
               />
             </div>
           </div>
-          <div className="content-right">
-            {/* Removed the content-block for the map and weather */}
-            <div className="content-block kv">
-              <div className="content-block-title">set_memory()</div>
-              <div className="content-block-body content-kv">
-                {JSON.stringify(memoryKv, null, 2)}
-              </div>
-            </div>
-          </div>
+          {/* Removed the content-right div */}
         </div>
       ) : (
         <div className="content-locked">
