@@ -1,13 +1,4 @@
-/**
- * Running a local relay server will allow you to hide your API key
- * and run custom logic on the server
- *
- * Set the local relay server address to:
- * REACT_APP_LOCAL_RELAY_SERVER_URL=http://localhost:8081
- *
- * This will also require you to set OPENAI_API_KEY= in a `.env` file
- * You can run it with `npm run relay`, in parallel with `npm start`
- */
+
 const LOCAL_RELAY_SERVER_URL: string =
   process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 
@@ -24,6 +15,7 @@ import { Button } from '../components/button/Button';
 import { Toggle } from '../components/toggle/Toggle';
 // Removed import of Map component
 import { Quiz } from '../components/quiz/Quiz';
+
 
 import './ConsolePage.scss';
 import { isJsxOpeningLikeElement } from 'typescript';
@@ -194,6 +186,61 @@ export function ConsolePage() {
   }, []);
 
   /**
+   * Unified Answer Handler
+   */
+  const handleAnswer = useCallback(
+    async (quizId: string, userAnswer: string) => {
+      if (!currentQuizQuestion) return;
+
+      // Disable inputs to prevent multiple submissions
+      setCanPushToTalk(false);
+
+      try {
+        const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_answer: userAnswer, quizId }),
+        });
+
+        const result = await response.json();
+
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
+        if (result.isCorrect) {
+          setQuizScore((prevScore) => prevScore + 1);
+          setQuizFeedback('Correct!');
+
+        } else {
+          setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
+
+        }
+
+        // Provide feedback for 3 seconds before resetting the question
+        setTimeout(() => {
+          setQuizFeedback('');
+          setCurrentQuizQuestion(null);
+          setCanPushToTalk(true);
+          // Optionally fetch a new quiz question here
+        }, 3000);
+      } catch (error) {
+        console.error('Error submitting quiz answer:', error);
+        setQuizFeedback('There was an error processing your answer.');
+        setCanPushToTalk(true);
+      }
+    },
+    [currentQuizQuestion]
+  );
+
+  const handleVoiceAnswer = useCallback(
+    (quizId: string, userAnswer: string) => {
+      handleAnswer(quizId, userAnswer);
+    },
+    [handleAnswer]
+  );
+
+  /**
    * In push-to-talk mode, start recording
    * .appendInputAudio() for each sample
    */
@@ -253,7 +300,7 @@ export function ConsolePage() {
         eventsScrollHeightRef.current = scrollHeight;
       }
     }
-  }, [realtimeEvents]);
+  }, [realtimeEvents, isAuthorized]);
 
   /**
    * Auto-scroll the conversation logs
@@ -437,15 +484,18 @@ export function ConsolePage() {
           if (result.isCorrect) {
             setQuizScore((prevScore) => prevScore + 1);
             setQuizFeedback('Correct!');
+
           } else {
             setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
+
           }
 
-          // Fetch the next question after a short delay
+          // Provide feedback for 3 seconds before resetting the question
           setTimeout(() => {
             setQuizFeedback('');
-            // Optionally fetch a new question automatically
-            // fetchQuizQuestion('desired_topic');
+            setCurrentQuizQuestion(null);
+            setCanPushToTalk(true);
+            // Optionally fetch a new quiz question here
           }, 3000);
 
           return result;
@@ -530,61 +580,7 @@ export function ConsolePage() {
       // Cleanup; resets to defaults
       client.reset();
     };
-  }, []);
-
-  /**
-   * Implement API Interaction Functions
-   */
-  const fetchQuizQuestion = async (topic: string) => {
-    try {
-      const response = await fetch(`https://quizshow.ference.ai/api/getQuiz?topic=${encodeURIComponent(topic)}`);
-      const data: QuizQuestionResponse = await response.json();
-
-      if ('error' in data) {
-        throw new Error(data.error);
-      }
-
-      setCurrentQuizQuestion(data);
-    } catch (error) {
-      console.error('Error fetching quiz question:', error);
-      // Handle error (e.g., show a notification)
-    }
-  };
-
-  const submitQuizAnswer = async (quizId: string, userAnswer: string) => {
-    try {
-      // Call the backend API to check the answer
-      const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_answer: userAnswer, quizId }),
-      });
-
-      // Parse the response from the backend
-      const result = await response.json();
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      // Update quiz score or feedback based on the result
-      if (result.isCorrect) {
-        setQuizScore((prevScore) => prevScore + 1);
-        setQuizFeedback('Correct!');
-      } else {
-        setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
-      }
-
-      // Wait for a short period before resetting quiz state
-      setTimeout(() => {
-        setQuizFeedback('');
-        setCurrentQuizQuestion(null); // Set to null after handling the response
-      }, 3000);
-    } catch (error) {
-      console.error('Error submitting quiz answer:', error);
-      // Handle any error that occurred during answer submission
-    }
-  };
+  }, []); // Changed dependency array to run only once on mount
 
   /**
    * Render the application
@@ -714,7 +710,7 @@ export function ConsolePage() {
                     options={currentQuizQuestion.options}
                     quizId={currentQuizQuestion.quizId}
                     score={quizScore}
-                    onSubmitAnswer={submitQuizAnswer}
+                    onSubmitAnswer={handleAnswer}
                     feedback={quizFeedback}
                   />
                 </div>
