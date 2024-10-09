@@ -319,16 +319,18 @@ export function ConsolePage() {
    * Set up render loops for the visualization canvas
    */
   useEffect(() => {
+    if (!isAuthorized) return; // Ensure the user is authorized before running
+  
     let isLoaded = true;
-
+  
     const wavRecorder = wavRecorderRef.current;
     const clientCanvas = clientCanvasRef.current;
     let clientCtx: CanvasRenderingContext2D | null = null;
-
+  
     const wavStreamPlayer = wavStreamPlayerRef.current;
     const serverCanvas = serverCanvasRef.current;
     let serverCtx: CanvasRenderingContext2D | null = null;
-
+  
     const render = () => {
       if (isLoaded) {
         if (clientCanvas) {
@@ -379,11 +381,38 @@ export function ConsolePage() {
       }
     };
     render();
-
+  
     return () => {
       isLoaded = false;
     };
-  }, []);
+  }, [isAuthorized]); // Add `isAuthorized` to the dependency array
+  
+  /**
+   * Core RealtimeClient and audio capture setup
+   * Set all of our instructions, tools, events, and more
+   */
+  useEffect(() => {
+    if (!isAuthorized) return; // Ensure the user is authorized before running
+  
+    // Get refs
+    const wavStreamPlayer = wavStreamPlayerRef.current;
+    const client = clientRef.current;
+  
+    // Set instructions
+    client.updateSession({
+      instructions: `
+        You are an AI assistant designed to facilitate quiz shows. When the user wants to start a quiz or asks for a quiz question, use the 'get_quiz_question' tool with an appropriate topic to fetch a question. Present the question and options to the user without revealing the correct answer. Await the user's response and then confirm whether it's correct.
+      `,
+    });
+  
+    // Set transcription, otherwise we don't get user transcriptions back
+    client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
+  
+    // Add tools
+  
+    // ... (rest of your existing code in this useEffect)
+  
+  }, [isAuthorized]); // Add `isAuthorized` to the dependency array
 
   /**
    * Core RealtimeClient and audio capture setup
