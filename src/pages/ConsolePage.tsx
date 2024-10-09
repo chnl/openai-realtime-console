@@ -22,27 +22,11 @@ import { WavRenderer } from '../utils/wav_renderer';
 import { X, Edit, Zap, ArrowUp, ArrowDown } from 'react-feather';
 import { Button } from '../components/button/Button';
 import { Toggle } from '../components/toggle/Toggle';
-import { Map } from '../components/Map';
+// Removed import of Map component
+import { Quiz } from '../components/quiz/Quiz';
 
 import './ConsolePage.scss';
 import { isJsxOpeningLikeElement } from 'typescript';
-
-/**
- * Type for result from get_weather() function call
- */
-interface Coordinates {
-  lat: number;
-  lng: number;
-  location?: string;
-  temperature?: {
-    value: number;
-    units: string;
-  };
-  wind_speed?: {
-    value: number;
-    units: string;
-  };
-}
 
 /**
  * Type for all event logs
@@ -55,6 +39,7 @@ interface RealtimeEvent {
 }
 
 interface QuizQuestion {
+  quizId: string; // Added quizId
   question: string;
   options: string[];
   answer?: string; // Optional if not always included
@@ -62,12 +47,10 @@ interface QuizQuestion {
 
 type QuizQuestionResponse = QuizQuestion | { error: string };
 
-
 export function ConsolePage() {
-
   const [currentQuizQuestion, setCurrentQuizQuestion] = useState<QuizQuestion | null>(null);
   const [quizScore, setQuizScore] = useState<number>(0);
-  const [quizQuestion, setQuizQuestion] = useState<QuizQuestion | null>(null);
+  const [quizFeedback, setQuizFeedback] = useState<string>('');
 
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [pinCode, setPinCode] = useState('');
@@ -77,13 +60,6 @@ export function ConsolePage() {
    * If we're using the local relay server, we don't need this
    */
   const apiKey = process.env.REACT_APP_OPENAI_API_KEY || '';
-  //   ? ''
-  //   : localStorage.getItem('tmp::voice_api_key') ||
-  //     prompt('OpenAI API Key') ||
-  //     '';
-  // if (apiKey !== '') {
-  //   localStorage.setItem('tmp::voice_api_key', apiKey);
-  // }
 
   /**
    * Instantiate:
@@ -125,7 +101,6 @@ export function ConsolePage() {
    * - items are all conversation items (dialog)
    * - realtimeEvents are event logs, which can be expanded
    * - memoryKv is for set_memory() function
-   * - coords, marker are for get_weather() function
    */
   const [items, setItems] = useState<ItemType[]>([]);
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
@@ -136,11 +111,7 @@ export function ConsolePage() {
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
-  const [coords, setCoords] = useState<Coordinates | null>({
-    lat: 37.775593,
-    lng: -122.418137,
-  });
-  const [marker, setMarker] = useState<Coordinates | null>(null);
+  // Removed coords and marker state variables
 
   /**
    * Utility for formatting the timing of logs
@@ -164,20 +135,8 @@ export function ConsolePage() {
   }, []);
 
   /**
-   * When you click the API key
-   */
-  // const resetAPIKey = useCallback(() => {
-  //   const apiKey = prompt('OpenAI API Key');
-  //   if (apiKey !== null) {
-  //     localStorage.clear();
-  //     localStorage.setItem('tmp::voice_api_key', apiKey);
-  //     window.location.reload();
-  //   }
-  // }, []);
-
-  /**
    * Connect to conversation:
-   * WavRecorder taks speech input, WavStreamPlayer output, client is API client
+   * WavRecorder takes speech input, WavStreamPlayer output, client is API client
    */
   const connectConversation = useCallback(async () => {
     const client = clientRef.current;
@@ -202,7 +161,6 @@ export function ConsolePage() {
       {
         type: `input_text`,
         text: `Hello!`,
-        // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
       },
     ]);
 
@@ -219,11 +177,6 @@ export function ConsolePage() {
     setRealtimeEvents([]);
     setItems([]);
     setMemoryKv({});
-    setCoords({
-      lat: 37.775593,
-      lng: -122.418137,
-    });
-    setMarker(null);
 
     const client = clientRef.current;
     client.disconnect();
@@ -291,15 +244,15 @@ export function ConsolePage() {
    */
   useEffect(() => {
     if (!isAuthorized) return;
-      if (eventsScrollRef.current) {
-        const eventsEl = eventsScrollRef.current;
-        const scrollHeight = eventsEl.scrollHeight;
-        // Only scroll if height has just changed
-        if (scrollHeight !== eventsScrollHeightRef.current) {
-          eventsEl.scrollTop = scrollHeight;
-          eventsScrollHeightRef.current = scrollHeight;
-        }
+    if (eventsScrollRef.current) {
+      const eventsEl = eventsScrollRef.current;
+      const scrollHeight = eventsEl.scrollHeight;
+      // Only scroll if height has just changed
+      if (scrollHeight !== eventsScrollHeightRef.current) {
+        eventsEl.scrollTop = scrollHeight;
+        eventsScrollHeightRef.current = scrollHeight;
       }
+    }
   }, [realtimeEvents]);
 
   /**
@@ -385,10 +338,9 @@ export function ConsolePage() {
     };
   }, []);
 
-
   /**
    * Core RealtimeClient and audio capture setup
-   * Set all of our instructions, tools, events and more
+   * Set all of our instructions, tools, events, and more
    */
   useEffect(() => {
     // Get refs
@@ -396,20 +348,18 @@ export function ConsolePage() {
     const client = clientRef.current;
 
     // Set instructions
-    // client.updateSession({ instructions: instructions });
     client.updateSession({
       instructions: `
         You are an AI assistant designed to facilitate quiz shows. When the user wants to start a quiz or asks for a quiz question, use the 'get_quiz_question' tool with an appropriate topic to fetch a question. Present the question and options to the user without revealing the correct answer. Await the user's response and then confirm whether it's correct.
       `,
     });
-    
+
     // Set transcription, otherwise we don't get user transcriptions back
     client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
 
     // Add tools
-  
+
     // Add get_quiz_question tool
-    // Update get_quiz_question tool
     client.addTool(
       {
         name: 'get_quiz_question',
@@ -430,13 +380,13 @@ export function ConsolePage() {
           const response = await fetch(
             `https://quizshow.ference.ai/api/getQuiz?topic=${encodeURIComponent(topic)}`
           );
-          const data = await response.json();
+          const data: QuizQuestionResponse = await response.json();
 
           if ('error' in data) {
             throw new Error(data.error);
           }
 
-          setQuizQuestion(data);
+          setCurrentQuizQuestion(data as QuizQuestion);
           return data;
         } catch (error) {
           console.error('Error fetching quiz question:', error);
@@ -462,29 +412,41 @@ export function ConsolePage() {
         },
       },
       async ({ user_answer }: { user_answer: string }) => {
-        if (!quizQuestion) {
+        if (!currentQuizQuestion) {
+          console.error('No current quiz question available.');
           return { error: 'No current quiz question.' };
         }
 
         try {
-          const response = await fetch('https://quizshow.ference.ai/api/checkAnswer', {
+          const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               user_answer,
-              correct_answer: quizQuestion.answer,
+              quizId: currentQuizQuestion.quizId,
             }),
           });
-
           const result = await response.json();
+
+          if (result.error) {
+            throw new Error(result.error);
+          }
 
           if (result.isCorrect) {
             setQuizScore((prevScore) => prevScore + 1);
+            setQuizFeedback('Correct!');
+          } else {
+            setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
           }
 
-          setQuizQuestion(null);
+          // Fetch the next question after a short delay
+          setTimeout(() => {
+            setQuizFeedback('');
+            // Optionally fetch a new question automatically
+            // fetchQuizQuestion('desired_topic');
+          }, 3000);
 
           return result;
         } catch (error) {
@@ -493,7 +455,6 @@ export function ConsolePage() {
         }
       }
     );
-    
 
     client.addTool(
       {
@@ -524,56 +485,14 @@ export function ConsolePage() {
         return { ok: true };
       }
     );
-    client.addTool(
-      {
-        name: 'get_weather',
-        description:
-          'Retrieves the weather for a given lat, lng coordinate pair. Specify a label for the location.',
-        parameters: {
-          type: 'object',
-          properties: {
-            lat: {
-              type: 'number',
-              description: 'Latitude',
-            },
-            lng: {
-              type: 'number',
-              description: 'Longitude',
-            },
-            location: {
-              type: 'string',
-              description: 'Name of the location',
-            },
-          },
-          required: ['lat', 'lng', 'location'],
-        },
-      },
-      async ({ lat, lng, location }: { [key: string]: any }) => {
-        setMarker({ lat, lng, location });
-        setCoords({ lat, lng, location });
-        const result = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m`
-        );
-        const json = await result.json();
-        const temperature = {
-          value: json.current.temperature_2m as number,
-          units: json.current_units.temperature_2m as string,
-        };
-        const wind_speed = {
-          value: json.current.wind_speed_10m as number,
-          units: json.current_units.wind_speed_10m as string,
-        };
-        setMarker({ lat, lng, location, temperature, wind_speed });
-        return json;
-      }
-    );
+    // Removed the get_weather tool
 
-    // handle realtime events from client + server for event logging
+    // Handle realtime events from client and server for event logging
     client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
       setRealtimeEvents((realtimeEvents) => {
         const lastEvent = realtimeEvents[realtimeEvents.length - 1];
         if (lastEvent?.event.type === realtimeEvent.event.type) {
-          // if we receive multiple events in a row, aggregate them for display purposes
+          // If we receive multiple events in a row, aggregate them for display purposes
           lastEvent.count = (lastEvent.count || 0) + 1;
           return realtimeEvents.slice(0, -1).concat(lastEvent);
         } else {
@@ -608,10 +527,64 @@ export function ConsolePage() {
     setItems(client.conversation.getItems());
 
     return () => {
-      // cleanup; resets to defaults
+      // Cleanup; resets to defaults
       client.reset();
     };
   }, []);
+
+  /**
+   * Implement API Interaction Functions
+   */
+  const fetchQuizQuestion = async (topic: string) => {
+    try {
+      const response = await fetch(`https://quizshow.ference.ai/api/getQuiz?topic=${encodeURIComponent(topic)}`);
+      const data: QuizQuestionResponse = await response.json();
+
+      if ('error' in data) {
+        throw new Error(data.error);
+      }
+
+      setCurrentQuizQuestion(data);
+    } catch (error) {
+      console.error('Error fetching quiz question:', error);
+      // Handle error (e.g., show a notification)
+    }
+  };
+
+  const submitQuizAnswer = async (quizId: string, userAnswer: string) => {
+    try {
+      // Call the backend API to check the answer
+      const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_answer: userAnswer, quizId }),
+      });
+
+      // Parse the response from the backend
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Update quiz score or feedback based on the result
+      if (result.isCorrect) {
+        setQuizScore((prevScore) => prevScore + 1);
+        setQuizFeedback('Correct!');
+      } else {
+        setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
+      }
+
+      // Wait for a short period before resetting quiz state
+      setTimeout(() => {
+        setQuizFeedback('');
+        setCurrentQuizQuestion(null); // Set to null after handling the response
+      }, 3000);
+    } catch (error) {
+      console.error('Error submitting quiz answer:', error);
+      // Handle any error that occurred during answer submission
+    }
+  };
 
   /**
    * Render the application
@@ -657,229 +630,204 @@ export function ConsolePage() {
       {/* Main Content */}
       {isAuthorized ? (
         <div className="content-main">
-        <div className="content-logs">
-          <div className="content-block events">
-            <div className="visualization">
-              <div className="visualization-entry client">
-                <canvas ref={clientCanvasRef} />
+          <div className="content-logs">
+            <div className="content-block events">
+              <div className="visualization">
+                <div className="visualization-entry client">
+                  <canvas ref={clientCanvasRef} />
+                </div>
+                <div className="visualization-entry server">
+                  <canvas ref={serverCanvasRef} />
+                </div>
               </div>
-              <div className="visualization-entry server">
-                <canvas ref={serverCanvasRef} />
-              </div>
-            </div>
-            <div className="content-block-title">events</div>
-            <div className="content-block-body" ref={eventsScrollRef}>
-              {!realtimeEvents.length && `awaiting connection...`}
-              {realtimeEvents.map((realtimeEvent, i) => {
-                const count = realtimeEvent.count;
-                const event = { ...realtimeEvent.event };
-                if (event.type === 'input_audio_buffer.append') {
-                  event.audio = `[trimmed: ${event.audio.length} bytes]`;
-                } else if (event.type === 'response.audio.delta') {
-                  event.delta = `[trimmed: ${event.delta.length} bytes]`;
-                }
-                return (
-                  <div className="event" key={event.event_id}>
-                    <div className="event-timestamp">
-                      {formatTime(realtimeEvent.time)}
-                    </div>
-                    <div className="event-details">
-                      <div
-                        className="event-summary"
-                        onClick={() => {
-                          // toggle event details
-                          const id = event.event_id;
-                          const expanded = { ...expandedEvents };
-                          if (expanded[id]) {
-                            delete expanded[id];
-                          } else {
-                            expanded[id] = true;
-                          }
-                          setExpandedEvents(expanded);
-                        }}
-                      >
+              <div className="content-block-title">events</div>
+              <div className="content-block-body" ref={eventsScrollRef}>
+                {!realtimeEvents.length && `awaiting connection...`}
+                {realtimeEvents.map((realtimeEvent, i) => {
+                  const count = realtimeEvent.count;
+                  const event = { ...realtimeEvent.event };
+                  if (event.type === 'input_audio_buffer.append') {
+                    event.audio = `[trimmed: ${event.audio.length} bytes]`;
+                  } else if (event.type === 'response.audio.delta') {
+                    event.delta = `[trimmed: ${event.delta.length} bytes]`;
+                  }
+                  return (
+                    <div className="event" key={event.event_id}>
+                      <div className="event-timestamp">
+                        {formatTime(realtimeEvent.time)}
+                      </div>
+                      <div className="event-details">
                         <div
-                          className={`event-source ${
-                            event.type === 'error'
-                              ? 'error'
-                              : realtimeEvent.source
-                          }`}
+                          className="event-summary"
+                          onClick={() => {
+                            // Toggle event details
+                            const id = event.event_id;
+                            const expanded = { ...expandedEvents };
+                            if (expanded[id]) {
+                              delete expanded[id];
+                            } else {
+                              expanded[id] = true;
+                            }
+                            setExpandedEvents(expanded);
+                          }}
                         >
-                          {realtimeEvent.source === 'client' ? (
-                            <ArrowUp />
-                          ) : (
-                            <ArrowDown />
-                          )}
-                          <span>
-                            {event.type === 'error'
-                              ? 'error!'
-                              : realtimeEvent.source}
-                          </span>
+                          <div
+                            className={`event-source ${
+                              event.type === 'error'
+                                ? 'error'
+                                : realtimeEvent.source
+                            }`}
+                          >
+                            {realtimeEvent.source === 'client' ? (
+                              <ArrowUp />
+                            ) : (
+                              <ArrowDown />
+                            )}
+                            <span>
+                              {event.type === 'error'
+                                ? 'error!'
+                                : realtimeEvent.source}
+                            </span>
+                          </div>
+                          <div className="event-type">
+                            {event.type}
+                            {count && ` (${count})`}
+                          </div>
                         </div>
-                        <div className="event-type">
-                          {event.type}
-                          {count && ` (${count})`}
-                        </div>
+                        {!!expandedEvents[event.event_id] && (
+                          <div className="event-payload">
+                            {JSON.stringify(event, null, 2)}
+                          </div>
+                        )}
                       </div>
-                      {!!expandedEvents[event.event_id] && (
-                        <div className="event-payload">
-                          {JSON.stringify(event, null, 2)}
-                        </div>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {quizQuestion && (
-            <div className="content-block quiz">
-              <div className="content-block-title">Quiz Question</div>
-              <div className="content-block-body">
-                <p><strong>{quizQuestion.question}</strong></p>
-                {quizQuestion.options && (
-                  <ol type="A">
-                    {quizQuestion.options.map((option: string, index: number) => (
-                      <li key={index}>{option}</li>
-                    ))}
-                  </ol>
-                )}
+                  );
+                })}
               </div>
             </div>
-          )}
-          <div className="content-block conversation">
-            <div className="content-block-title">conversation</div>
-            <div className="content-block-body" data-conversation-content>
-              {!items.length && `awaiting connection...`}
-              {items.map((conversationItem, i) => {
-                return (
-                  <div className="conversation-item" key={conversationItem.id}>
-                    <div className={`speaker ${conversationItem.role || ''}`}>
-                      <div>
-                        {(
-                          conversationItem.role || conversationItem.type
-                        ).replaceAll('_', ' ')}
-                      </div>
-                      <div
-                        className="close"
-                        onClick={() =>
-                          deleteConversationItem(conversationItem.id)
-                        }
-                      >
-                        <X />
-                      </div>
-                    </div>
-                    <div className={`speaker-content`}>
-                      {/* tool response */}
-                      {conversationItem.type === 'function_call_output' && (
-                        <div>{conversationItem.formatted.output}</div>
-                      )}
-                      {/* tool call */}
-                      {!!conversationItem.formatted.tool && (
-                        <div>
-                          {conversationItem.formatted.tool.name}(
-                          {conversationItem.formatted.tool.arguments})
-                        </div>
-                      )}
-                      {!conversationItem.formatted.tool &&
-                        conversationItem.role === 'user' && (
-                          <div>
-                            {conversationItem.formatted.transcript ||
-                              (conversationItem.formatted.audio?.length
-                                ? '(awaiting transcript)'
-                                : conversationItem.formatted.text ||
-                                  '(item sent)')}
-                          </div>
-                        )}
-                      {!conversationItem.formatted.tool &&
-                        conversationItem.role === 'assistant' && (
-                          <div>
-                            {conversationItem.formatted.transcript ||
-                              conversationItem.formatted.text ||
-                              '(truncated)'}
-                          </div>
-                        )}
-                      {conversationItem.formatted.file && (
-                        <audio
-                          src={conversationItem.formatted.file.url}
-                          controls
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="content-actions">
-            <Toggle
-              defaultValue={false}
-              labels={['manual', 'vad']}
-              values={['none', 'server_vad']}
-              onChange={(_, value) => changeTurnEndType(value)}
-            />
-            <div className="spacer" />
-            {isConnected && canPushToTalk && (
-              <Button
-                label={isRecording ? 'release to send' : 'push to talk'}
-                buttonStyle={isRecording ? 'alert' : 'regular'}
-                disabled={!isConnected || !canPushToTalk}
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-              />
+            {currentQuizQuestion && (
+              <div className="content-block quiz">
+                <div className="content-block-title">Quiz Show</div>
+                <div className="content-block-body">
+                  <Quiz
+                    question={currentQuizQuestion.question}
+                    options={currentQuizQuestion.options}
+                    quizId={currentQuizQuestion.quizId}
+                    score={quizScore}
+                    onSubmitAnswer={submitQuizAnswer}
+                    feedback={quizFeedback}
+                  />
+                </div>
+              </div>
             )}
-            <div className="spacer" />
-            <Button
-              label={isConnected ? 'disconnect' : 'connect'}
-              iconPosition={isConnected ? 'end' : 'start'}
-              icon={isConnected ? X : Zap}
-              buttonStyle={isConnected ? 'regular' : 'action'}
-              onClick={
-                isConnected ? disconnectConversation : connectConversation
-              }
-            />
-          </div>
-        </div>
-        <div className="content-right">
-          <div className="content-block map">
-            <div className="content-block-title">get_weather()</div>
-            <div className="content-block-title bottom">
-              {marker?.location || 'not yet retrieved'}
-              {!!marker?.temperature && (
-                <>
-                  <br />
-                  🌡️ {marker.temperature.value} {marker.temperature.units}
-                </>
-              )}
-              {!!marker?.wind_speed && (
-                <>
-                  {' '}
-                  🍃 {marker.wind_speed.value} {marker.wind_speed.units}
-                </>
-              )}
+            <div className="content-block conversation">
+              <div className="content-block-title">conversation</div>
+              <div className="content-block-body" data-conversation-content>
+                {!items.length && `awaiting connection...`}
+                {items.map((conversationItem, i) => {
+                  return (
+                    <div className="conversation-item" key={conversationItem.id}>
+                      <div className={`speaker ${conversationItem.role || ''}`}>
+                        <div>
+                          {(
+                            conversationItem.role || conversationItem.type
+                          ).replaceAll('_', ' ')}
+                        </div>
+                        <div
+                          className="close"
+                          onClick={() =>
+                            deleteConversationItem(conversationItem.id)
+                          }
+                        >
+                          <X />
+                        </div>
+                      </div>
+                      <div className={`speaker-content`}>
+                        {/* Tool response */}
+                        {conversationItem.type === 'function_call_output' && (
+                          <div>{conversationItem.formatted.output}</div>
+                        )}
+                        {/* Tool call */}
+                        {!!conversationItem.formatted.tool && (
+                          <div>
+                            {conversationItem.formatted.tool.name}(
+                            {conversationItem.formatted.tool.arguments})
+                          </div>
+                        )}
+                        {!conversationItem.formatted.tool &&
+                          conversationItem.role === 'user' && (
+                            <div>
+                              {conversationItem.formatted.transcript ||
+                                (conversationItem.formatted.audio?.length
+                                  ? '(awaiting transcript)'
+                                  : conversationItem.formatted.text ||
+                                    '(item sent)')}
+                            </div>
+                          )}
+                        {!conversationItem.formatted.tool &&
+                          conversationItem.role === 'assistant' && (
+                            <div>
+                              {conversationItem.formatted.transcript ||
+                                conversationItem.formatted.text ||
+                                '(truncated)'}
+                            </div>
+                          )}
+                        {conversationItem.formatted.file && (
+                          <audio
+                            src={conversationItem.formatted.file.url}
+                            controls
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="content-block-body full">
-              {coords && (
-                <Map
-                  center={[coords.lat, coords.lng]}
-                  location={coords.location}
+            <div className="content-actions">
+              <Toggle
+                defaultValue={false}
+                labels={['manual', 'vad']}
+                values={['none', 'server_vad']}
+                onChange={(_, value) => changeTurnEndType(value)}
+              />
+              <div className="spacer" />
+              {isConnected && canPushToTalk && (
+                <Button
+                  label={isRecording ? 'release to send' : 'push to talk'}
+                  buttonStyle={isRecording ? 'alert' : 'regular'}
+                  disabled={!isConnected || !canPushToTalk}
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
                 />
               )}
+              <div className="spacer" />
+              <Button
+                label={isConnected ? 'disconnect' : 'connect'}
+                iconPosition={isConnected ? 'end' : 'start'}
+                icon={isConnected ? X : Zap}
+                buttonStyle={isConnected ? 'regular' : 'action'}
+                onClick={
+                  isConnected ? disconnectConversation : connectConversation
+                }
+              />
             </div>
           </div>
-          <div className="content-block kv">
-            <div className="content-block-title">set_memory()</div>
-            <div className="content-block-body content-kv">
-              {JSON.stringify(memoryKv, null, 2)}
+          <div className="content-right">
+            {/* Removed the content-block for the map and weather */}
+            <div className="content-block kv">
+              <div className="content-block-title">set_memory()</div>
+              <div className="content-block-body content-kv">
+                {JSON.stringify(memoryKv, null, 2)}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-        ) : (
-          <div className="content-locked">
-            {/* Optionally, display a message or image */}
-          </div>
-        )}
-      </div>
-    );
+      ) : (
+        <div className="content-locked">
+          {/* Optionally, display a message or image */}
+        </div>
+      )}
+    </div>
+  );
 }
