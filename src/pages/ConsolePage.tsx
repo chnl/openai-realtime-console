@@ -195,39 +195,31 @@ export function ConsolePage() {
   const handleAnswer = useCallback(
     async (quizId: string, userAnswer: string) => {
       if (!currentQuizQuestion) return;
-
-      // Disable inputs to prevent multiple submissions
+  
       setCanPushToTalk(false);
-
+  
       try {
         const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_answer: userAnswer, quizId }),
         });
-
+  
         const result = await response.json();
-
+  
         if (result.error) {
           throw new Error(result.error);
         }
-
+  
         if (result.isCorrect) {
           setQuizScore((prevScore) => prevScore + 1);
           setQuizFeedback('Correct!');
-
         } else {
           setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
-
         }
-
-        // Provide feedback for 3 seconds before resetting the question
-        setTimeout(() => {
-          setQuizFeedback('');
-          setCurrentQuizQuestion(null);
-          setCanPushToTalk(true);
-          // Optionally fetch a new quiz question here
-        }, 3000);
+  
+        // Remove the setTimeout here
+        setCanPushToTalk(true);
       } catch (error) {
         console.error('Error submitting quiz answer:', error);
         setQuizFeedback('There was an error processing your answer.');
@@ -235,13 +227,6 @@ export function ConsolePage() {
       }
     },
     [currentQuizQuestion]
-  );
-
-  const handleVoiceAnswer = useCallback(
-    (quizId: string, userAnswer: string) => {
-      handleAnswer(quizId, userAnswer);
-    },
-    [handleAnswer]
   );
 
   /**
@@ -405,23 +390,24 @@ export function ConsolePage() {
     // Set instructions
     client.updateSession({
       instructions: `
-        You are an AI assistant designed to facilitate quiz shows. When the user wants to start a quiz or asks for a quiz question, use the 'get_quiz_question' tool with an appropriate topic to fetch a question. Present the question and options to the user without revealing the correct answer. Await the user's response and then confirm whether it's correct.
+        You are an AI assistant designed to facilitate quiz shows. When a new quiz question is received, always use the 'set_memory' tool to store it with the key 'current_question'.
+        
+        Present the question and options to the user without revealing the correct answer. 
+        
+        When the user provides an answer, use the 'check_answer' tool to verify it. The tool will automatically use the current question stored in memory.
+        
+        After providing feedback on the answer, ask the user if they want to continue with another question. If they do, use the 'get_quiz_question' tool again to fetch a new question, and remember to store it using 'set_memory'.
+        
+        Always ensure that the current question is stored in memory before checking answers.
       `,
     });
   
     // Set transcription, otherwise we don't get user transcriptions back
     client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
   
-    // Add tools
-  
-    // ... (rest of your existing code in this useEffect)
   
   }, [isAuthorized]); // Add `isAuthorized` to the dependency array
 
-  /**
-   * Core RealtimeClient and audio capture setup
-   * Set all of our instructions, tools, events, and more
-   */
   useEffect(() => {
     // Get refs
     const wavStreamPlayer = wavStreamPlayerRef.current;
@@ -440,6 +426,8 @@ export function ConsolePage() {
     // Add tools
 
     // Add get_quiz_question tool
+    let currentQuestion: QuizQuestion | null = null;
+
     client.addTool(
       {
         name: 'get_quiz_question',
@@ -466,8 +454,9 @@ export function ConsolePage() {
             throw new Error(data.error);
           }
 
-          setCurrentQuizQuestion(data as QuizQuestion);
-          return data;
+          currentQuestion = data as QuizQuestion;
+          setCurrentQuizQuestion(currentQuestion);
+          return currentQuestion;
         } catch (error) {
           console.error('Error fetching quiz question:', error);
           return { error: 'Failed to fetch quiz question.' };
@@ -492,11 +481,11 @@ export function ConsolePage() {
         },
       },
       async ({ user_answer }: { user_answer: string }) => {
-        if (!currentQuizQuestion) {
+        if (!currentQuestion) {
           console.error('No current quiz question available.');
           return { error: 'No current quiz question.' };
         }
-
+    
         try {
           const response = await fetch('https://quizshow.ference.ai/api/checkAnswers', {
             method: 'POST',
@@ -505,37 +494,43 @@ export function ConsolePage() {
             },
             body: JSON.stringify({
               user_answer,
-              quizId: currentQuizQuestion.quizId,
+              quizId: currentQuestion.quizId,
             }),
           });
           const result = await response.json();
-
+    
           if (result.error) {
             throw new Error(result.error);
           }
-
+    
           if (result.isCorrect) {
             setQuizScore((prevScore) => prevScore + 1);
             setQuizFeedback('Correct!');
-
           } else {
             setQuizFeedback(`Incorrect. The correct answer was ${result.result}.`);
-
           }
-
-          // Provide feedback for 3 seconds before resetting the question
-          setTimeout(() => {
-            setQuizFeedback('');
-            setCurrentQuizQuestion(null);
-            setCanPushToTalk(true);
-            // Optionally fetch a new quiz question here
-          }, 3000);
-
+    
           return result;
         } catch (error) {
           console.error('Error checking answer:', error);
           return { error: 'Failed to check answer.' };
         }
+      }
+    );
+
+    client.addTool(
+      {
+        name: 'next_question',
+        description: 'Moves to the next question in the quiz.',
+        parameters: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      async () => {
+        setQuizFeedback('');
+        setCurrentQuizQuestion(null);
+        return { message: 'Ready for the next question.' };
       }
     );
 
@@ -548,8 +543,7 @@ export function ConsolePage() {
           properties: {
             key: {
               type: 'string',
-              description:
-                'The key of the memory value. Always use lowercase and underscores, no other characters.',
+              description: 'The key of the memory value. Always use lowercase and underscores, no other characters.',
             },
             value: {
               type: 'string',
@@ -565,10 +559,18 @@ export function ConsolePage() {
           newKv[key] = value;
           return newKv;
         });
+        if (key === 'current_question') {
+          try {
+            currentQuestion = JSON.parse(value) as QuizQuestion;
+            setCurrentQuizQuestion(currentQuestion);
+          } catch (error) {
+            console.error('Error parsing current_question:', error);
+          }
+        }
         return { ok: true };
       }
     );
-    // Removed the get_weather tool
+ 
 
     // Handle realtime events from client and server for event logging
     client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
