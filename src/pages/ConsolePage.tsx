@@ -390,17 +390,18 @@ export function ConsolePage() {
     // Set instructions
     client.updateSession({
       instructions: `
-        You are an AI assistant designed to facilitate quiz shows. When a new quiz question is received, always use the 'set_memory' tool to store it with the key 'current_question'.
-        
-        Present the question and options to the user without revealing the correct answer. 
-        
+        You are an AI assistant designed to facilitate quiz shows. When a new quiz question is received, always use the 'set_memory' tool to store the **entire quiz question object as a JSON string** with the key 'current_question'. Do not store just the 'quizId' or any other identifier.
+    
+        Present the question and options to the user without revealing the correct answer.
+    
         When the user provides an answer, use the 'check_answer' tool to verify it. The tool will automatically use the current question stored in memory.
-        
+    
         After providing feedback on the answer, ask the user if they want to continue with another question. If they do, use the 'get_quiz_question' tool again to fetch a new question, and remember to store it using 'set_memory'.
-        
+    
         Always ensure that the current question is stored in memory before checking answers.
       `,
     });
+    
   
     // Set transcription, otherwise we don't get user transcriptions back
     client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
@@ -543,33 +544,55 @@ export function ConsolePage() {
           properties: {
             key: {
               type: 'string',
-              description: 'The key of the memory value. Always use lowercase and underscores, no other characters.',
+              description:
+                'The key of the memory value. Always use lowercase and underscores, no other characters.',
             },
             value: {
               type: 'string',
-              description: 'Value can be anything represented as a string',
+              description: 'Value can be anything represented as a string.',
             },
           },
           required: ['key', 'value'],
         },
       },
-      async ({ key, value }: { [key: string]: any }) => {
-        setMemoryKv((memoryKv) => {
-          const newKv = { ...memoryKv };
-          newKv[key] = value;
-          return newKv;
-        });
-        if (key === 'current_question') {
-          try {
-            currentQuestion = JSON.parse(value) as QuizQuestion;
-            setCurrentQuizQuestion(currentQuestion);
-          } catch (error) {
-            console.error('Error parsing current_question:', error);
+      async ({ key, value }: { key: string; value: string }) => {
+        try {
+          // Log value before attempting to parse
+          console.log('Value before parsing:', value);
+    
+          if (key === 'current_question') {
+            // Check if the value is a valid JSON string
+            if (value.trim().startsWith('{') || value.trim().startsWith('[')) {
+              const parsedValue = JSON.parse(value) as QuizQuestion;
+              console.log('Parsed current_question:', parsedValue);
+              currentQuestion = parsedValue;
+              setCurrentQuizQuestion(currentQuestion);
+            } else {
+              console.error(
+                'Expected JSON for current_question, but received:',
+                value
+              );
+              return { error: 'Expected a JSON object for current_question.' };
+            }
           }
+    
+          // Update memoryKv state
+          setMemoryKv((memoryKv) => {
+            const newKv = { ...memoryKv };
+            // Store the value as is
+            newKv[key] = value;
+            return newKv;
+          });
+    
+          return { ok: true };
+        } catch (error) {
+          console.error('Error in set_memory tool:', error);
+          return { error: 'Failed to set memory value.' };
         }
-        return { ok: true };
       }
     );
+    
+    
  
 
     // Handle realtime events from client and server for event logging
