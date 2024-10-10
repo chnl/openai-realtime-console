@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../button/Button';
 import './Quiz.scss';
 
@@ -20,11 +20,26 @@ export const Quiz: React.FC<QuizProps> = ({
   feedback,
 }) => {
   const [selectedOption, setSelectedOption] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isFeedbackVisible, setIsFeedbackVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (feedback) {
+      setIsFeedbackVisible(true);
+      setIsSubmitting(false);
+    }
+  }, [feedback]);
 
   const handleSubmit = () => {
-    if (selectedOption) {
+    if (selectedOption && !isSubmitting) {
       onSubmitAnswer(quizId, selectedOption);
+      setIsSubmitting(true);
     }
+  };
+
+  const resetQuiz = () => {
+    setSelectedOption('');
+    setIsFeedbackVisible(false);
   };
 
   return (
@@ -40,10 +55,8 @@ export const Quiz: React.FC<QuizProps> = ({
         {options.map((option, index) => (
           <Button
             key={index}
-            // Display the option directly without prepending A., B., etc.
             label={option}
             buttonStyle={selectedOption === option ? 'action' : 'regular'}
-            // Set the full option as the selected value
             onClick={() => setSelectedOption(option)}
           />
         ))}
@@ -53,8 +66,16 @@ export const Quiz: React.FC<QuizProps> = ({
           label="Submit Answer"
           buttonStyle="action"
           onClick={handleSubmit}
-          disabled={!selectedOption}
+          disabled={!selectedOption || isSubmitting}
         />
+        {isFeedbackVisible && (
+          <Button
+            label="Next Question"
+            buttonStyle="regular"
+            onClick={resetQuiz}
+            disabled={isSubmitting}
+          />
+        )}
       </div>
       {feedback && (
         <div className="quiz-feedback">
