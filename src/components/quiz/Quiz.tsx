@@ -40,9 +40,11 @@ export const Quiz: React.FC<QuizProps> = ({
         {options.map((option, index) => (
           <Button
             key={index}
-            label={`${String.fromCharCode(65 + index)}. ${option}`}
-            buttonStyle={selectedOption === String.fromCharCode(65 + index) ? 'action' : 'regular'}
-            onClick={() => setSelectedOption(String.fromCharCode(65 + index))}
+            // Display the option directly without prepending A., B., etc.
+            label={option}
+            buttonStyle={selectedOption === option ? 'action' : 'regular'}
+            // Set the full option as the selected value
+            onClick={() => setSelectedOption(option)}
           />
         ))}
       </div>

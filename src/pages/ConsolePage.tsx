@@ -423,7 +423,7 @@ export function ConsolePage() {
 
     // Set transcription, otherwise we don't get user transcriptions back
     client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
-
+    client.updateSession({ voice: 'echo' });
     // Add tools
 
     // Add get_quiz_question tool
